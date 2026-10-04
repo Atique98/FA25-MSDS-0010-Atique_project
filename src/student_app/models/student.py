@@ -6,26 +6,4 @@ class Student:
         self.semester = semester
         self.marks = marks
         self.grade = None
-
-    @classmethod
-    def from_dict(cls, data):
-        return cls(
-            data["id"],
-            data["name"],
-            data["program"],
-            data["semester"],
-            data["marks"],
-        )
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "program": self.program,
-            "semester": self.semester,
-            "marks": self.marks,
-            "grade": self.grade,
-        }
-
-    def __str__(self):
-        return f"{self.name} ({self.id}) - {self.program}"
+        self.status = None

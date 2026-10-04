@@ -9,3 +9,9 @@ def calculate_grade(marks):
         return "D"
     else:
         return "F"
+
+
+def student_status(marks):
+    if marks >= 50:
+        return "Pass"
+    return "Fail"

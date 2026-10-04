@@ -1,107 +1,106 @@
 import json
 import os
 
-from student_app.config import APP_NAME, DEBUG, MAX_STUDENTS, API_KEY
+from student_app.config import APP_NAME, DEBUG, MAX_STUDENTS, BASE_DIR
 from student_app.logger import get_logger
 from student_app.models.student import Student
-from student_app.services.calculator import calculate_grade
-from student_app.utils.validation import validate_name, validate_marks, validate_student
-from student_app.utils.user_input import get_student_name, get_student_marks, ask_yes_no
+from student_app.services.calculator import calculate_grade, student_status
+from student_app.utils.validation import validate_name, validate_marks
 from student_app.reports.student_report import display_report
 
 logger = get_logger(__name__)
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_FILE = os.path.join(BASE_DIR, "data", "student.json")
 
 
 def show_config():
-    print(f"Application : {APP_NAME}")
-    print(f"Debug mode  : {DEBUG}")
-    print(f"Max students: {MAX_STUDENTS}")
-    print(f"API key set : {API_KEY is not None}")
+    print("Application :", APP_NAME)
+    print("Debug mode  :", DEBUG)
+    print("Max students:", MAX_STUDENTS)
 
 
 def load_students():
     try:
-        with open(DATA_FILE, "r") as f:
-            data = json.load(f)
+        with open(DATA_FILE, "r") as file:
+            data = json.load(file)
     except FileNotFoundError:
-        logger.error("Data file not found: %s", DATA_FILE)
+        logger.error("Student file not found")
         return []
-    except json.JSONDecodeError as e:
-        logger.error("Invalid JSON in %s: %s", DATA_FILE, e)
+    except json.JSONDecodeError:
+        logger.error("Student file is not valid JSON")
         return []
 
     if isinstance(data, dict):
-        data = [data]
-
-    logger.info("Loaded %d student record(s) from %s", len(data), DATA_FILE)
+        return [data]
     return data
 
 
-def process_student(data):
-    errors = validate_student(data)
-    if errors:
-        for err in errors:
-            logger.warning("Skipping student %s: %s", data.get("id", "?"), err)
-        return None
-
-    student = Student.from_dict(data)
-    student.grade = calculate_grade(student.marks)
-    logger.info("Processed %s -> grade %s", student, student.grade)
-    return student
-
-
-def add_student_manually(next_id):
-    name = get_student_name()
+def build_student(student_id, name, program, semester, marks):
     if not validate_name(name):
-        logger.warning("Invalid name entered: %r", name)
-        print("Name must contain only letters and cannot be empty.")
-        return None
-
-    try:
-        marks = get_student_marks()
-    except ValueError:
-        logger.warning("Marks were not a number")
-        print("Marks must be a whole number.")
+        print("Name cannot be empty")
+        logger.warning("Invalid name")
         return None
 
     if not validate_marks(marks):
-        logger.warning("Marks out of range: %s", marks)
-        print("Marks must be between 0 and 100.")
+        print("Marks must be between 0 and 100")
+        logger.warning("Invalid marks: %s", marks)
         return None
 
-    student = Student(next_id, name.strip(), "Not specified", 1, marks)
-    student.grade = calculate_grade(student.marks)
-    logger.info("Added %s manually with grade %s", student, student.grade)
+    student = Student(student_id, name.strip(), program, semester, marks)
+    student.grade = calculate_grade(marks)
+    student.status = student_status(marks)
+    logger.info("%s got grade %s", student.name, student.grade)
     return student
 
 
+def read_new_student():
+    name = input("Enter student name: ")
+    if not validate_name(name):
+        print("Name cannot be empty")
+        logger.warning("Invalid name")
+        return None
+
+    try:
+        marks = int(input("Enter student marks: "))
+    except ValueError:
+        print("Marks must be a number")
+        logger.warning("Marks input was not a number")
+        return None
+
+    return build_student("2024100", name, "BS Computer Science", 1, marks)
+
+
 def main():
-    logger.info("Starting %s", APP_NAME)
+    logger.info("Application started")
     show_config()
 
-    students = []
+    shown = 0
     for record in load_students():
-        student = process_student(record)
-        if student is not None:
-            students.append(student)
-            display_report(student)
-
-    while len(students) < MAX_STUDENTS:
-        if not ask_yes_no("Add another student?"):
+        if shown >= MAX_STUDENTS:
+            logger.warning("Reached maximum students")
             break
-        student = add_student_manually(f"MAN{len(students) + 1:03d}")
+
+        student = build_student(
+            record.get("id", ""),
+            record.get("name", ""),
+            record.get("program", ""),
+            record.get("semester", 1),
+            record.get("marks", -1),
+        )
+        if student is None:
+            continue
+
+        display_report(student)
+        shown += 1
+
+    answer = input("Add a student? (y/n): ").strip().lower()
+    if answer == "y" and shown < MAX_STUDENTS:
+        student = read_new_student()
         if student is not None:
-            students.append(student)
             display_report(student)
+            shown += 1
 
-    if len(students) >= MAX_STUDENTS:
-        logger.warning("Reached MAX_STUDENTS limit (%d)", MAX_STUDENTS)
-
-    print(f"Total students processed: {len(students)}")
-    logger.info("Finished with %d student(s)", len(students))
+    print("Total students:", shown)
+    logger.info("Application finished")
 
 
 if __name__ == "__main__":
